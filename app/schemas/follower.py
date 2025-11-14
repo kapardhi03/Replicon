@@ -15,10 +15,17 @@ class FollowerCreate(BaseModel):
     phone: Optional[str] = Field(None, max_length=15, description="Phone number")
     password: Optional[str] = Field(None, min_length=8, description="Platform password")
 
-    # IIFL Normal REST API credentials
-    iifl_customer_code: str = Field(..., description="IIFL client/customer code")
-    iifl_user_id: str = Field(..., description="IIFL user ID for authentication")
-    iifl_password: str = Field(..., description="IIFL account password")
+    # IIFL Normal REST API credentials - COMPLETE REQUIRED FIELDS
+    iifl_customer_code: str = Field(..., description="IIFL ClientCode (body)")
+    iifl_user_id: str = Field(..., description="IIFL userId (head)")
+    iifl_password: str = Field(..., description="IIFL password (head)")
+    iifl_api_key: str = Field(..., description="IIFL API key (head.key)")
+
+    # IIFL API head parameters - REQUIRED for every API call
+    iifl_app_name: str = Field("IIFLMarDEMO", description="appName (head)")
+    iifl_app_version: str = Field("1.0", description="appVer (head)")
+    iifl_os_name: str = Field("Android", description="osName (head)")
+    iifl_request_code: str = Field("IIFLMarRQOrdBkV2", description="requestCode (head)")
 
     # Trading configuration
     scaling_factor: Optional[float] = Field(1.0, gt=0, le=100, description="Default scaling factor")
@@ -26,7 +33,6 @@ class FollowerCreate(BaseModel):
 
     # Optional IIFL fields
     iifl_public_ip: Optional[str] = Field(None, description="Public IP for IIFL API")
-    iifl_app_name: Optional[str] = Field("CopyTrade", description="Application name")
 
     class Config:
         json_schema_extra = {
@@ -37,8 +43,13 @@ class FollowerCreate(BaseModel):
                 "phone": "+91 98765 43210",
                 "password": "SecurePass123",
                 "iifl_customer_code": "ABC12345",
-                "iifl_user_id": "JANE123",
-                "iifl_password": "iifl_password",
+                "iifl_user_id": "mocZueK622W",
+                "iifl_password": "UjR1ElLwSzr",
+                "iifl_api_key": "ABpyyGUh1nsbesSlup3VKURkI4tQDe8y",
+                "iifl_app_name": "IIFLMarDEMO",
+                "iifl_app_version": "1.0",
+                "iifl_os_name": "Android",
+                "iifl_request_code": "IIFLMarRQOrdBkV2",
                 "scaling_factor": 1.0,
                 "initial_balance": 100000.0,
                 "iifl_public_ip": "192.168.1.1"
