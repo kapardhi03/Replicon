@@ -61,11 +61,13 @@ class User(Base):
 
     # IIFL Integration - Complete fields matching API requirements
     iifl_account_id = Column(String(100), unique=True, index=True)  # ClientCode
-    iifl_user_id = Column(String(100))  # userId for authentication
-    iifl_password = Column(String(255))  # password for authentication
-    iifl_api_key = Column(String(255))  # key from IIFL API
-    iifl_app_name = Column(String(100), default="CopyTrade")  # appName
-    iifl_app_version = Column(String(20), default="1.0.0")  # appVer
+    iifl_user_id = Column(String(100))  # userId for authentication (head)
+    iifl_password = Column(String(255))  # password for authentication (head)
+    iifl_api_key = Column(String(255))  # key from IIFL API (head.key)
+    iifl_app_name = Column(String(100), default="IIFLMarDEMO")  # appName (head)
+    iifl_app_version = Column(String(20), default="1.0")  # appVer (head)
+    iifl_os_name = Column(String(50), default="Android")  # osName (head)
+    iifl_request_code = Column(String(100), default="IIFLMarRQOrdBkV2")  # requestCode (head)
     iifl_public_ip = Column(String(45))  # PublicIP for order requests
 
     # Trading

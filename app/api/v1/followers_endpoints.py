@@ -7,6 +7,7 @@ from sqlalchemy import select, func
 from typing import List
 from decimal import Decimal
 import logging
+import json
 
 from app.db.database import get_db
 from app.models.models import (
@@ -14,6 +15,7 @@ from app.models.models import (
     UserRole,
     FollowerRelationship,
     Order,
+    OrderStatus,
     AuditLog,
     AuditActionType
 )
@@ -99,10 +101,11 @@ async def create_follower(
             follower_data.password or "default_password_change_me"
         )
 
-        # Encrypt IIFL password
+        # Encrypt IIFL password and API key
         encrypted_iifl_password = encryption_service.encrypt(follower_data.iifl_password)
+        encrypted_iifl_api_key = encryption_service.encrypt(follower_data.iifl_api_key)
 
-        # Create follower user
+        # Create follower user with ALL required IIFL fields
         follower_user = User(
             username=follower_data.username,
             email=follower_data.email,
@@ -111,11 +114,17 @@ async def create_follower(
             role=UserRole.FOLLOWER,
             is_active=True,
             is_verified=True,
+            # IIFL credentials - ALL fields required for API calls
             iifl_account_id=follower_data.iifl_customer_code,
             iifl_user_id=follower_data.iifl_user_id,
             iifl_password=encrypted_iifl_password,
+            iifl_api_key=encrypted_iifl_api_key,
+            # IIFL API head parameters
+            iifl_app_name=follower_data.iifl_app_name,
+            iifl_app_version=follower_data.iifl_app_version,
+            iifl_os_name=follower_data.iifl_os_name,
+            iifl_request_code=follower_data.iifl_request_code,
             iifl_public_ip=follower_data.iifl_public_ip or "127.0.0.1",
-            iifl_app_name=follower_data.iifl_app_name or "CopyTrade",
             balance=Decimal(str(follower_data.initial_balance or 100000.0))
         )
 
@@ -603,4 +612,169 @@ async def disconnect_follower_from_master(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to disconnect mapping: {str(e)}"
+        )
+
+
+# ============================================
+# EMERGENCY SOS - CLOSE ALL OPEN ORDERS
+# ============================================
+@router.post(
+    "/emergency/close-all-orders",
+    summary="🚨 Emergency SOS - Close All Open Orders",
+    description="Emergency endpoint to immediately close ALL open orders for ALL followers. Use only in emergency situations!"
+)
+async def emergency_close_all_orders(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    🚨 EMERGENCY SOS - Close all open orders immediately
+
+    This endpoint will:
+    1. Find all open/pending orders for ALL follower accounts
+    2. Cancel each order via IIFL API
+    3. Update order status in database
+    4. Create comprehensive audit logs
+
+    **⚠️ WARNING: This is an emergency feature. Use with extreme caution!**
+
+    Returns:
+        Summary of closed orders and any failures
+    """
+    from app.services.iifl.normal_client import IIFLNormalClient
+    from app.services.redis_service import get_redis_service
+    from app.core.security import get_encryption_service
+
+    try:
+        logger.warning("🚨 EMERGENCY SOS TRIGGERED - Closing all open orders!")
+
+        # Get all open orders for followers
+        stmt = select(Order).join(User).where(
+            User.role == UserRole.FOLLOWER,
+            Order.status.in_([OrderStatus.PENDING, OrderStatus.SUBMITTED, OrderStatus.PARTIALLY_FILLED])
+        )
+        result = await db.execute(stmt)
+        open_orders = result.scalars().all()
+
+        if not open_orders:
+            logger.info("No open orders found")
+            return {
+                "success": True,
+                "message": "No open orders to close",
+                "total_orders": 0,
+                "closed_orders": 0,
+                "failed_orders": 0
+            }
+
+        logger.warning(f"Found {len(open_orders)} open orders to close")
+
+        # Initialize IIFL client and services
+        iifl_client = IIFLNormalClient()
+        redis_service = await get_redis_service()
+        encryption_service = get_encryption_service()
+
+        closed_count = 0
+        failed_count = 0
+        failed_orders = []
+
+        # Process each open order
+        for order in open_orders:
+            try:
+                # Get follower user
+                follower = await db.get(User, order.user_id)
+
+                if not follower or not follower.is_active:
+                    logger.warning(f"Follower user inactive for order {order.id}")
+                    failed_count += 1
+                    continue
+
+                # Get or create IIFL token
+                token = await redis_service.get_iifl_token(follower.id)
+
+                if not token:
+                    # Authenticate
+                    decrypted_password = encryption_service.decrypt(follower.iifl_password)
+
+                    auth_data = await iifl_client.authenticate_user(
+                        user_id=follower.iifl_user_id,
+                        password=decrypted_password,
+                        public_ip=follower.iifl_public_ip or "127.0.0.1"
+                    )
+                    token = auth_data.get("token")
+
+                    # Cache token
+                    await redis_service.cache_iifl_token(
+                        user_id=follower.id,
+                        token=token,
+                        expire_seconds=3000
+                    )
+
+                # Cancel order via IIFL API
+                await iifl_client.cancel_order(
+                    token=token,
+                    client_code=follower.iifl_account_id,
+                    broker_order_id=order.broker_order_id,
+                    exchange_order_id=order.exchange_order_id or "",
+                    traded_qty=order.filled_quantity,
+                    exchange="N",  # Default NSE
+                    exchange_type="C",  # Default Cash
+                    scrip_code=0,  # Will be ignored for cancel
+                    public_ip=follower.iifl_public_ip or "127.0.0.1"
+                )
+
+                # Update order status
+                order.status = OrderStatus.CANCELLED
+                closed_count += 1
+
+                logger.info(f"✅ Closed order: id={order.id}, broker_order_id={order.broker_order_id}")
+
+            except Exception as e:
+                logger.error(f"❌ Failed to close order {order.id}: {e}")
+                failed_count += 1
+                failed_orders.append({
+                    "order_id": order.id,
+                    "broker_order_id": order.broker_order_id,
+                    "error": str(e)
+                })
+
+        # Commit all updates
+        await db.commit()
+
+        # Create audit log
+        audit_log = AuditLog(
+            action_type=AuditActionType.REPLICATION_COMPLETED,  # Using existing enum
+            action_description=f"🚨 EMERGENCY SOS: Closed {closed_count} orders, {failed_count} failed",
+            success=failed_count == 0,
+            metadata=json.dumps({
+                "total_orders": len(open_orders),
+                "closed": closed_count,
+                "failed": failed_count,
+                "failed_orders": failed_orders
+            })
+        )
+        db.add(audit_log)
+        await db.commit()
+
+        # Close IIFL client
+        await iifl_client.close()
+
+        logger.warning(
+            f"🚨 EMERGENCY SOS COMPLETE: "
+            f"Closed {closed_count}/{len(open_orders)} orders, "
+            f"{failed_count} failed"
+        )
+
+        return {
+            "success": True,
+            "message": f"Emergency SOS completed: {closed_count} orders closed",
+            "total_orders": len(open_orders),
+            "closed_orders": closed_count,
+            "failed_orders": failed_count,
+            "failed_details": failed_orders if failed_orders else None
+        }
+
+    except Exception as e:
+        logger.error(f"Emergency SOS error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Emergency SOS failed: {str(e)}"
         )
