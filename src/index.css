@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme colors */
+    --background: 255 255 255;
+    --foreground: 26 35 126;
+    --muted: 236 239 241;
+    --muted-foreground: 96 125 139;
+    --accent: 26 35 126;
+    --accent-foreground: 255 255 255;
+    --border: 207 216 220;
+  }
+
+  .dark {
+    /* Dark theme colors */
+    --background: 18 18 18;
+    --foreground: 236 239 241;
+    --muted: 38 50 56;
+    --muted-foreground: 176 190 197;
+    --accent: 63 81 181;
+    --accent-foreground: 255 255 255;
+    --border: 55 71 79;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-accent;
+  }
+}
+
+@layer components {
+  /* Utility classes for numbers (using monospace font) */
+  .font-numbers {
+    @apply font-mono tabular-nums;
+  }
+
+  /* Profit/Loss color utilities */
+  .text-profit {
+    @apply text-[#00e676];
+  }
+
+  .text-loss {
+    @apply text-[#f44336];
+  }
+
+  .bg-profit {
+    @apply bg-[#00e676];
+  }
+
+  .bg-loss {
+    @apply bg-[#f44336];
+  }
+}
