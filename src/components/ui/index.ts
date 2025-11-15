@@ -30,3 +30,8 @@ export type { SkeletonProps, SkeletonGroupProps } from './Skeleton';
 
 export { default as ToastProvider, useToast } from './Toast';
 export type { Toast, ToastType } from './Toast';
+
+export { default as ProgressSteps } from './ProgressSteps';
+export type { Step } from './ProgressSteps';
+
+export { default as PasswordStrength } from './PasswordStrength';
